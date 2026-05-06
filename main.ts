@@ -5,20 +5,42 @@ let isPlaying = false
 let isSetupLen = true
 let isSetupBpm = false
 let editCursor = 0
-let fullScale = [16, 18, 20, 21, 24, 27, 31, 33, 37, 41, 44, 49, 55, 62, 65, 73, 82, 87, 98, 110, 123, 131, 147, 165, 175, 196, 220, 247, 262, 294, 330, 349, 392, 440, 494]
-
-// Dual-Layer Arrays
-let drumLayer: number[] = []   // 0-4: Kick, Snare, Hat, Tom, Crash. (Mute Removed)
-let noteLayer: number[] = []   // 0: Mute, 1-35: Frequencies
-let waveLayer: number[] = []   // 0-3: Waveforms
 let editMode = "D"
 
-// --- INITIALIZE (KICK AS DEFAULT) ---
+// 3 AUDIBLE OCTAVES OF C MAJOR (C2 to C5)
+let scale = [
+    65, 73, 82, 87, 98, 110, 123,   // Octave 2
+    131, 147, 165, 175, 196, 220, 247, // Octave 3
+    262, 294, 330, 349, 392, 440, 494  // Octave 4/5
+]
+
+let drumLayer: number[] = []; let noteLayer: number[] = []; let waveLayer: number[] = []
+
 for (let i = 0; i < 32; i++) {
-    drumLayer.push(0)  // Default to Kick Drum
-    noteLayer.push(0)  // Default to Mute Note
-    waveLayer.push(2)  // Default to Triangle
+    drumLayer.push(0); noteLayer.push(0); waveLayer.push(2)
 }
+
+// --- SHAKE RANDOMIZER WITH UNIQUE GLITCH SOUND ---
+input.onGesture(Gesture.Shake, function () {
+    if (!isPlaying && !isSetupLen && !isSetupBpm) {
+        // 1. Play Unique "Glitch Sweep" Sound
+        music.play(music.createSoundExpression(
+            WaveShape.Square, 400, 1500, 255, 0, 300,
+            SoundExpressionEffect.Vibrato, InterpolationCurve.Logarithmic
+        ), music.PlaybackMode.InBackground)
+
+        // 2. Randomize Layers
+        for (let i = 0; i < steps; i++) {
+            drumLayer[i] = Math.randomRange(0, 4)
+            noteLayer[i] = Math.randomRange(0, 21)
+            waveLayer[i] = Math.randomRange(0, 3)
+        }
+
+        // 3. Visual "Flash" feedback
+        basic.showIcon(IconNames.Diamond, 10)
+        updateDisplay()
+    }
+})
 
 // --- SOUND ENGINES ---
 function playDrum(index: number) {
@@ -32,7 +54,7 @@ function playDrum(index: number) {
 function playNote(pitchIdx: number, waveIdx: number) {
     if (pitchIdx > 0) {
         let waves = [WaveShape.Sine, WaveShape.Square, WaveShape.Triangle, WaveShape.Sawtooth]
-        let f = fullScale[pitchIdx - 1]
+        let f = scale[pitchIdx - 1]
         music.play(music.createSoundExpression(waves[waveIdx], f, f, 255, 255, 100, SoundExpressionEffect.None, InterpolationCurve.Linear), music.PlaybackMode.InBackground)
     }
 }
@@ -63,9 +85,8 @@ input.onButtonPressed(Button.B, function () {
     if (isSetupLen) { if (steps < 32) steps *= 2; basic.showNumber(steps, 60) }
     else if (isSetupBpm) { tempo = Math.min(600, tempo + 20); basic.showNumber(tempo, 60) }
     else if (!isPlaying) {
-        // Cycle limit changed to 5 (Mute removed)
         if (editMode == "D") drumLayer[editCursor] = (drumLayer[editCursor] + 1) % 5
-        else if (editMode == "N") noteLayer[editCursor] = (noteLayer[editCursor] + 1) % 36
+        else if (editMode == "N") noteLayer[editCursor] = (noteLayer[editCursor] + 1) % 22
         else waveLayer[editCursor] = (waveLayer[editCursor] + 1) % 4
         updateDisplay(); preview()
     }
@@ -86,23 +107,12 @@ input.onLogoEvent(TouchButtonEvent.Pressed, function () {
     if (!isSetupLen && !isSetupBpm) { isPlaying = !isPlaying; if (!isPlaying) updateDisplay() }
 })
 
-input.onGesture(Gesture.Shake, function () {
-    if (!isPlaying && !isSetupLen && !isSetupBpm) {
-        for (let i = 0; i < steps; i++) {
-            drumLayer[i] = Math.randomRange(0, 4) // Randomize 0-4 only
-            noteLayer[i] = Math.randomRange(0, 35)
-            waveLayer[i] = Math.randomRange(0, 3)
-        }
-        music.playTone(440, 100); updateDisplay()
-    }
-})
-
 function preview() {
     playDrum(drumLayer[editCursor])
     playNote(noteLayer[editCursor], waveLayer[editCursor])
 }
 
-// --- DUAL-LAYER GAPLESS ENGINE ---
+// --- ENGINE ---
 control.inBackground(function () {
     let playIdx = 0
     while (true) {
