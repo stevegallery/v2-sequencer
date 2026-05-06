@@ -5,24 +5,19 @@ let isPlaying = false
 let isSetupLen = true
 let isSetupBpm = false
 let editCursor = 0
+let fullScale = [16, 18, 20, 21, 24, 27, 31, 33, 37, 41, 44, 49, 55, 62, 65, 73, 82, 87, 98, 110, 123, 131, 147, 165, 175, 196, 220, 247, 262, 294, 330, 349, 392, 440, 494]
+
+// Dual-Layer Arrays
+let drumLayer: number[] = []   // 0-4: Kick, Snare, Hat, Tom, Crash. (Mute Removed)
+let noteLayer: number[] = []   // 0: Mute, 1-35: Frequencies
+let waveLayer: number[] = []   // 0-3: Waveforms
 let editMode = "D"
 
-// 5 OCTAVES OF C MAJOR (C0 to C5)
-let fullScale = [
-    16, 18, 20, 21, 24, 27, 31,     // Octave 0 (Sub)
-    33, 37, 41, 44, 49, 55, 62,     // Octave 1 (Low C starts at index 7)
-    65, 73, 82, 87, 98, 110, 123,   // Octave 2
-    131, 147, 165, 175, 196, 220, 247, // Octave 3
-    262, 294, 330, 349, 392, 440, 494  // Octave 4/5
-]
-
-let drumLayer: number[] = []; let noteLayer: number[] = []; let waveLayer: number[] = []
-
-// --- INITIALIZE: KICK + LOW C ---
+// --- INITIALIZE (KICK AS DEFAULT) ---
 for (let i = 0; i < 32; i++) {
-    drumLayer.push(0)  // 0 = Kick Drum
-    noteLayer.push(8)  // 8 = C1 (Low C) in our fullScale array
-    waveLayer.push(2)  // 2 = Triangle Wave (Best for bass)
+    drumLayer.push(0)  // Default to Kick Drum
+    noteLayer.push(0)  // Default to Mute Note
+    waveLayer.push(2)  // Default to Triangle
 }
 
 // --- SOUND ENGINES ---
@@ -52,7 +47,9 @@ function drawPath() {
 
 function updateDisplay() {
     drawPath()
-    led.plotBrightness(editCursor % 5, Math.floor(editCursor / 5), 255)
+    if (editMode == "I") led.plotBrightness(editCursor % 5, Math.floor(editCursor / 5), 100)
+    else if (editMode == "N") led.plotBrightness(editCursor % 5, Math.floor(editCursor / 5), 180)
+    else led.plotBrightness(editCursor % 5, Math.floor(editCursor / 5), 255)
 }
 
 // --- CONTROLS ---
@@ -66,8 +63,9 @@ input.onButtonPressed(Button.B, function () {
     if (isSetupLen) { if (steps < 32) steps *= 2; basic.showNumber(steps, 60) }
     else if (isSetupBpm) { tempo = Math.min(600, tempo + 20); basic.showNumber(tempo, 60) }
     else if (!isPlaying) {
-        if (editMode == "D") drumLayer[editCursor] = (drumLayer[editCursor] + 1) % 6
-        else if (editMode == "N") noteLayer[editCursor] = (noteLayer[editCursor] + 1) % 37
+        // Cycle limit changed to 5 (Mute removed)
+        if (editMode == "D") drumLayer[editCursor] = (drumLayer[editCursor] + 1) % 5
+        else if (editMode == "N") noteLayer[editCursor] = (noteLayer[editCursor] + 1) % 36
         else waveLayer[editCursor] = (waveLayer[editCursor] + 1) % 4
         updateDisplay(); preview()
     }
@@ -75,7 +73,7 @@ input.onButtonPressed(Button.B, function () {
 
 input.onButtonPressed(Button.AB, function () {
     if (isSetupLen) { isSetupLen = false; isSetupBpm = true; basic.showNumber(tempo, 60) }
-    else if (isSetupBpm) { isSetupBpm = false; updateDisplay() }
+    else if (isSetupBpm) { isSetupBpm = false; basic.clearScreen(); updateDisplay() }
     else if (!isPlaying) {
         if (editMode == "D") editMode = "N"
         else if (editMode == "N") editMode = "I"
@@ -91,8 +89,8 @@ input.onLogoEvent(TouchButtonEvent.Pressed, function () {
 input.onGesture(Gesture.Shake, function () {
     if (!isPlaying && !isSetupLen && !isSetupBpm) {
         for (let i = 0; i < steps; i++) {
-            drumLayer[i] = Math.randomRange(0, 5)
-            noteLayer[i] = Math.randomRange(0, 36)
+            drumLayer[i] = Math.randomRange(0, 4) // Randomize 0-4 only
+            noteLayer[i] = Math.randomRange(0, 35)
             waveLayer[i] = Math.randomRange(0, 3)
         }
         music.playTone(440, 100); updateDisplay()
@@ -104,7 +102,7 @@ function preview() {
     playNote(noteLayer[editCursor], waveLayer[editCursor])
 }
 
-// --- PLAYBACK ENGINE ---
+// --- DUAL-LAYER GAPLESS ENGINE ---
 control.inBackground(function () {
     let playIdx = 0
     while (true) {
