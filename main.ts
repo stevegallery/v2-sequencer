@@ -16,7 +16,6 @@ for (let i = 0; i < 32; i++) {
 
 // --- SOUND ENGINE (REBALANCED VOLUMES) ---
 function playSingleDrum(index: number, sDur: number) {
-    // Drum volumes lowered to ~150 to make room for notes
     if (index == 0) music.play(music.createSoundExpression(WaveShape.Sine, 120, 1, 160, 0, sDur, SoundExpressionEffect.None, InterpolationCurve.Curve), music.PlaybackMode.InBackground)
     else if (index == 1) music.play(music.createSoundExpression(WaveShape.Noise, 600, 1, 140, 0, sDur * 0.8, SoundExpressionEffect.None, InterpolationCurve.Linear), music.PlaybackMode.InBackground)
     else if (index == 2) music.play(music.createSoundExpression(WaveShape.Noise, 3000, 1, 130, 0, sDur * 1.2, SoundExpressionEffect.None, InterpolationCurve.Linear), music.PlaybackMode.InBackground)
@@ -27,25 +26,16 @@ function playSingleDrum(index: number, sDur: number) {
 function playComplexNote(pitchIdx: number, instIdx: number, sDur: number) {
     if (pitchIdx <= 0) return;
     let f = scale[pitchIdx - 1];
-
-    // Note volumes set to MAX (255)
-    if (instIdx == 0) { // PLUCK
-        music.play(music.createSoundExpression(WaveShape.Square, f, f, 255, 0, sDur, SoundExpressionEffect.Warble, InterpolationCurve.Linear), music.PlaybackMode.InBackground)
-    } else if (instIdx == 1) { // ACID
-        music.play(music.createSoundExpression(WaveShape.Sawtooth, f + 10, f, 255, 50, sDur, SoundExpressionEffect.Vibrato, InterpolationCurve.Curve), music.PlaybackMode.InBackground)
-    } else if (instIdx == 2) { // STRINGS
-        music.play(music.createSoundExpression(WaveShape.Sawtooth, f, f, 100, 255, sDur, SoundExpressionEffect.Vibrato, InterpolationCurve.Linear), music.PlaybackMode.InBackground)
-    } else if (instIdx == 3) { // SAWTOOTH LEAD
-        music.play(music.createSoundExpression(WaveShape.Sawtooth, f, f, 255, 150, sDur, SoundExpressionEffect.None, InterpolationCurve.Linear), music.PlaybackMode.InBackground)
-    } else { // SINE BELL
-        music.play(music.createSoundExpression(WaveShape.Sine, f, f, 255, 0, sDur * 1.5, SoundExpressionEffect.None, InterpolationCurve.Logarithmic), music.PlaybackMode.InBackground)
-    }
+    if (instIdx == 0) music.play(music.createSoundExpression(WaveShape.Square, f, f, 255, 0, sDur, SoundExpressionEffect.Warble, InterpolationCurve.Linear), music.PlaybackMode.InBackground)
+    else if (instIdx == 1) music.play(music.createSoundExpression(WaveShape.Sawtooth, f + 10, f, 255, 50, sDur, SoundExpressionEffect.Vibrato, InterpolationCurve.Curve), music.PlaybackMode.InBackground)
+    else if (instIdx == 2) music.play(music.createSoundExpression(WaveShape.Sawtooth, f, f, 100, 255, sDur, SoundExpressionEffect.Vibrato, InterpolationCurve.Linear), music.PlaybackMode.InBackground)
+    else if (instIdx == 3) music.play(music.createSoundExpression(WaveShape.Sawtooth, f, f, 255, 150, sDur, SoundExpressionEffect.None, InterpolationCurve.Linear), music.PlaybackMode.InBackground)
+    else music.play(music.createSoundExpression(WaveShape.Sine, f, f, 255, 0, sDur * 1.5, SoundExpressionEffect.None, InterpolationCurve.Logarithmic), music.PlaybackMode.InBackground)
 }
 
 function triggerStep(dIdx: number, nIdx: number, wIdx: number, isolated: boolean) {
     music.stopAllSounds()
     let sDur = (30000 / tempo) * 0.6
-    drawSpectrograph(nIdx, dIdx < 5)
     if (isolated) {
         if (editMode == "D") playSingleDrum(dIdx, sDur)
         else playComplexNote(nIdx, wIdx, sDur)
@@ -56,16 +46,6 @@ function triggerStep(dIdx: number, nIdx: number, wIdx: number, isolated: boolean
 }
 
 // --- VISUALS ---
-function drawSpectrograph(nIdx: number, isDrum: boolean) {
-    if (!isPlaying) return;
-    for (let x = 0; x < 5; x++) led.unplot(x, 4)
-    if (isDrum) { led.plotBrightness(0, 4, 150); led.plotBrightness(4, 4, 150) }
-    if (nIdx > 0) {
-        let bars = Math.map(nIdx, 1, 21, 1, 5)
-        for (let i = 0; i < bars; i++) led.plotBrightness(i, 4, 200)
-    }
-}
-
 function drawPath() {
     basic.clearScreen()
     for (let i = 0; i < steps; i++) led.plotBrightness(i % 5, Math.floor(i / 5), 20)
@@ -85,13 +65,19 @@ function updateDisplay() {
 input.onButtonPressed(Button.A, function () {
     if (isSetupLen) { steps = (steps > 2) ? steps / 2 : 2; basic.showNumber(steps, 60) }
     else if (isSetupBpm) { tempo = Math.max(40, tempo - 20); basic.showNumber(tempo, 60) }
-    else if (!isPlaying) { editCursor = (editCursor + 1) % steps; updateDisplay(); triggerStep(drumLayer[editCursor], noteLayer[editCursor], waveLayer[editCursor], false) }
+    else if (isPlaying) {
+        tempo = Math.max(40, tempo - 20); // Silent live tempo change
+    }
+    else { editCursor = (editCursor + 1) % steps; updateDisplay(); triggerStep(drumLayer[editCursor], noteLayer[editCursor], waveLayer[editCursor], false) }
 })
 
 input.onButtonPressed(Button.B, function () {
     if (isSetupLen) { steps = (steps < 32) ? steps * 2 : 32; basic.showNumber(steps, 60) }
     else if (isSetupBpm) { tempo = Math.min(600, tempo + 20); basic.showNumber(tempo, 60) }
-    else if (!isPlaying) {
+    else if (isPlaying) {
+        tempo = Math.min(600, tempo + 20); // Silent live tempo change
+    }
+    else {
         if (editMode == "D") drumLayer[editCursor] = (drumLayer[editCursor] + 1) % numDrumSounds;
         else if (editMode == "N") noteLayer[editCursor] = (noteLayer[editCursor] + 1) % 22
         else waveLayer[editCursor] = (waveLayer[editCursor] + 1) % 5
@@ -106,8 +92,7 @@ input.onButtonPressed(Button.AB, function () {
         if (editMode == "D") editMode = "N"
         else if (editMode == "N") editMode = "I"
         else editMode = "D"
-        updateDisplay();
-        triggerStep(drumLayer[editCursor], noteLayer[editCursor], waveLayer[editCursor], true)
+        updateDisplay(); triggerStep(drumLayer[editCursor], noteLayer[editCursor], waveLayer[editCursor], true)
     }
 })
 
@@ -126,6 +111,7 @@ input.onGesture(Gesture.Shake, function () {
     }
 })
 
+// --- PLAYBACK ENGINE ---
 control.inBackground(function () {
     let playIdx = 0
     while (true) {
